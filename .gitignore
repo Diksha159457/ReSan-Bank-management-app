@@ -30,3 +30,5 @@ resan_data.json.backup
 
 # Logs
 *.log
+.DS_Store
+**/.DS_Store
