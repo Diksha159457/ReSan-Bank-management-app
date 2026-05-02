@@ -32,3 +32,4 @@ resan_data.json.backup
 *.log
 .DS_Store
 **/.DS_Store
+.vscode/
