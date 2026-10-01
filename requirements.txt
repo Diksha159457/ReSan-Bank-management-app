@@ -1,13 +1,13 @@
-# ═══════════════════════════════════════════════════════════════
-# requirements.txt — ReSan Private Bank
-# Install all dependencies with: pip install -r requirements.txt
-# ═══════════════════════════════════════════════════════════════
-
+# ReSan Private Bank — runtime dependencies
 --only-binary=:all:
 
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
-gunicorn==23.0.0
-python-multipart==0.0.12
-pydantic==2.10.3
-twilio>=9.0.0
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32
+gunicorn>=23.0
+python-multipart>=0.0.12
+pydantic>=2.10,<3
+sqlalchemy>=2.0,<3
+psycopg[binary]>=3.2      # Postgres driver (used when DATABASE_URL is set)
+bcrypt>=4.2
+PyJWT>=2.9
+twilio>=9.0               # optional: real SMS OTPs

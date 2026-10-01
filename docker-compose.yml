@@ -1,0 +1,29 @@
+# Full stack with Postgres:  docker compose up --build  →  http://localhost:8000
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: resan
+      POSTGRES_PASSWORD: resan
+      POSTGRES_DB: resan
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resan"]
+      interval: 2s
+      retries: 15
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://resan:resan@db:5432/resan
+      SECRET_KEY: change-me-to-a-long-random-string
+      DEMO_MODE: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

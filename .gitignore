@@ -33,3 +33,11 @@ resan_data.json.backup
 .DS_Store
 **/.DS_Store
 .vscode/
+
+# Local databases
+*.db
+*.db-wal
+*.db-shm
+.coverage
+.pytest_cache/
+.ruff_cache/

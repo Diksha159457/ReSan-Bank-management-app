@@ -236,12 +236,11 @@
   <section class="page" id="page-dashboard">
     <div class="page-header">
       <h2>Dashboard</h2>
-      <p>Enter your credentials to view your account.</p>
+      <p>Your account at a glance.</p>
     </div>
     <div class="card" style="max-width:480px" id="dashLoginCard">
-      <div class="field"><label>Account Number</label><input type="text" id="dash-acc" placeholder="RS-XXXXXXXX" /></div>
-      <div class="field"><label>PIN</label><input type="password" id="dash-pin" placeholder="••••" maxlength="4" /></div>
-      <button class="btn btn-primary btn-full" onclick="loadDashboard()">View Account</button>
+      <p>Please sign in to view your account.</p>
+      <button class="btn btn-primary btn-full" onclick="goTo('login')">Sign In</button>
       <div class="msg" id="dash-msg"></div>
     </div>
     <div id="dashContent" style="display:none">
@@ -256,7 +255,7 @@
         <div class="info-row"><span>Email</span><strong id="dash-email">—</strong></div>
         <div class="info-row"><span>Age</span><strong id="dash-age">—</strong></div>
         <div class="info-row"><span>Since</span><strong id="dash-since">—</strong></div>
-        <div class="info-row"><span>Docs Uploaded</span><strong id="dash-docs">—</strong></div>
+        <div class="info-row"><span>KYC Status</span><strong id="dash-docs">—</strong></div>
       </div>
       <div class="dash-recent" id="dashRecent"></div>
     </div>
@@ -266,8 +265,6 @@
   <section class="page" id="page-deposit">
     <div class="page-header"><h2>Deposit Funds</h2><p>Credit money to your ReSan account.</p></div>
     <div class="card" style="max-width:480px">
-      <div class="field"><label>Account Number</label><input type="text" id="dep-acc" placeholder="RS-XXXXXXXX" /></div>
-      <div class="field"><label>PIN</label><input type="password" id="dep-pin" placeholder="••••" maxlength="4" /></div>
       <div class="field"><label>Amount (₹)</label><input type="number" id="dep-amt" placeholder="1000" min="1" /></div>
       <div class="quick-amounts">
         <button class="quick-btn" onclick="setAmount('dep-amt',500)">₹500</button>
@@ -284,8 +281,6 @@
   <section class="page" id="page-withdraw">
     <div class="page-header"><h2>Withdraw Funds</h2><p>Debit money from your ReSan account.</p></div>
     <div class="card" style="max-width:480px">
-      <div class="field"><label>Account Number</label><input type="text" id="with-acc" placeholder="RS-XXXXXXXX" /></div>
-      <div class="field"><label>PIN</label><input type="password" id="with-pin" placeholder="••••" maxlength="4" /></div>
       <div class="field"><label>Amount (₹)</label><input type="number" id="with-amt" placeholder="500" min="1" /></div>
       <div class="quick-amounts">
         <button class="quick-btn" onclick="setAmount('with-amt',500)">₹500</button>
@@ -302,8 +297,6 @@
   <section class="page" id="page-transfer">
     <div class="page-header"><h2>Transfer Funds</h2><p>Send money to another ReSan account instantly.</p></div>
     <div class="card" style="max-width:480px">
-      <div class="field"><label>Your Account Number</label><input type="text" id="tr-from" placeholder="RS-XXXXXXXX" /></div>
-      <div class="field"><label>Your PIN</label><input type="password" id="tr-pin" placeholder="••••" maxlength="4" /></div>
       <div class="field"><label>Recipient Account Number</label><input type="text" id="tr-to" placeholder="RS-XXXXXXXX" /></div>
       <div class="field"><label>Amount (₹)</label><input type="number" id="tr-amt" placeholder="1000" min="1" /></div>
       <button class="btn btn-primary btn-full" onclick="doTransfer()">Transfer</button>
@@ -315,9 +308,8 @@
   <section class="page" id="page-transactions">
     <div class="page-header"><h2>Transaction History</h2><p>View your complete statement.</p></div>
     <div class="card" style="max-width:480px" id="txLoginCard">
-      <div class="field"><label>Account Number</label><input type="text" id="tx-acc" placeholder="RS-XXXXXXXX" /></div>
-      <div class="field"><label>PIN</label><input type="password" id="tx-pin" placeholder="••••" maxlength="4" /></div>
-      <button class="btn btn-primary btn-full" onclick="loadTransactions()">Load History</button>
+      <p>Please sign in to view your statement.</p>
+      <button class="btn btn-primary btn-full" onclick="goTo('login')">Sign In</button>
       <div class="msg" id="tx-msg"></div>
     </div>
     <div id="txContent" style="display:none">
@@ -332,8 +324,7 @@
   <section class="page" id="page-upload">
     <div class="page-header"><h2>Upload Documents</h2><p>Complete your KYC — PDF files only, max 2MB each.</p></div>
     <div class="card" style="max-width:520px">
-      <div class="field"><label>Account Number</label><input type="text" id="up-acc" placeholder="RS-XXXXXXXX" /></div>
-      <div class="field"><label>PIN</label><input type="password" id="up-pin" placeholder="••••" maxlength="4" /></div>
+      <div class="danger-alert">🧪 This is a portfolio demo. Upload sample PDFs only, never your real Aadhaar, PAN or address proof.</div>
       <div class="section-divider">Documents</div>
       <div class="field"><label>Aadhaar Card (PDF)</label><input type="file" id="up-aadhaar" accept=".pdf" class="file-input" /></div>
       <div class="field"><label>PAN Card (PDF)</label><input type="file" id="up-pan" accept=".pdf" class="file-input" /></div>
@@ -348,7 +339,6 @@
   <section class="page" id="page-update">
     <div class="page-header"><h2>Update Profile</h2><p>Modify your account details.</p></div>
     <div class="card" style="max-width:480px">
-      <div class="field"><label>Account Number</label><input type="text" id="upd-acc" placeholder="RS-XXXXXXXX" /></div>
       <div class="field"><label>Current PIN</label><input type="password" id="upd-pin" placeholder="••••" maxlength="4" /></div>
       <div class="section-divider">Fields to Update (leave blank to keep)</div>
       <div class="field"><label>New Name</label><input type="text" id="upd-name" placeholder="New full name" /></div>
@@ -364,10 +354,9 @@
     <div class="page-header"><h2>Close Account</h2><p class="danger-text">This action is permanent and cannot be undone.</p></div>
     <div class="card" style="max-width:480px">
       <div class="danger-alert">
-        ⚠️ Closing your account will permanently erase all your data. Ensure you have withdrawn all funds before proceeding.
+        ⚠️ Closing your account is permanent. Your balance must be ₹0: withdraw or transfer any remaining funds first.
       </div>
-      <div class="field"><label>Account Number</label><input type="text" id="cls-acc" placeholder="RS-XXXXXXXX" /></div>
-      <div class="field"><label>PIN</label><input type="password" id="cls-pin" placeholder="••••" maxlength="4" /></div>
+      <div class="field"><label>Confirm with your PIN</label><input type="password" id="cls-pin" placeholder="••••" maxlength="4" /></div>
       <div class="field">
         <label>Type <strong>DELETE</strong> to confirm</label>
         <input type="text" id="cls-confirm" placeholder="DELETE" />
