@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+      - run: node --check frontend/app.js
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: resan
+          POSTGRES_PASSWORD: resan
+          POSTGRES_DB: resan_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U resan" --health-interval 2s --health-retries 15
+    env:
+      TEST_DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql+psycopg://resan:resan@localhost:5432/resan_test' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q --cov=resan --cov-report=term-missing
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot the full stack with Postgres and smoke-test it
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 40); do curl -fs localhost:8000/api/health && break; sleep 2; done
+          curl -fs localhost:8000/api/stats
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8000/api/deposit \
+            -H 'content-type: application/json' -d '{"amount":10}')
+          test "$code" = 401
+      - if: failure()
+        run: docker compose logs

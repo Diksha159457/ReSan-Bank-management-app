@@ -2,7 +2,23 @@
 const API = '';   // Same origin — FastAPI serves this frontend
 
 /* ── State ──────────────────────────────────────────────────────────────── */
-let session = { accNo: null, name: null };
+// The session token lives in sessionStorage: it survives a page refresh but is
+// cleared when the tab closes, and it expires on the server after 15 minutes.
+const EMPTY_SESSION = { accNo: null, name: null, token: null };
+let session = loadSession();
+
+function loadSession() {
+  try { return JSON.parse(sessionStorage.getItem('rs-session')) || { ...EMPTY_SESSION }; }
+  catch (_) { return { ...EMPTY_SESSION }; }
+}
+function saveSession() {
+  try {
+    if (session.token) sessionStorage.setItem('rs-session', JSON.stringify(session));
+    else sessionStorage.removeItem('rs-session');
+  } catch (_) {}
+}
+
+const PROTECTED_PAGES = ['dashboard', 'deposit', 'withdraw', 'transfer', 'transactions', 'upload', 'update', 'close'];
 
 /* ── Theme ──────────────────────────────────────────────────────────────── */
 const themeBtn   = document.getElementById('themeBtn');
@@ -30,12 +46,18 @@ applyTheme(localStorage.getItem('rs-theme') || 'dark');
 
 /* ── Navigation ─────────────────────────────────────────────────────────── */
 function goTo(page) {
+  if (PROTECTED_PAGES.includes(page) && !session.token && page !== 'dashboard' && page !== 'transactions') {
+    showToast('Please sign in first.', 'error');
+    page = 'login';
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page)?.classList.add('active');
   document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
   closeSidebar();
   window.scrollTo(0, 0);
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'transactions') loadTransactions();
 }
 
 document.querySelectorAll('.nav-item').forEach(btn => {
@@ -94,8 +116,12 @@ async function apiCall(method, path, body = null, isForm = false) {
       opts.body = JSON.stringify(body);
     }
   }
+  if (session.token) opts.headers['Authorization'] = 'Bearer ' + session.token;
   const res = await fetch(API + path, opts);
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && session.token) {
+    endSession('Your session expired. Please sign in again.');
+  }
   if (!res.ok) throw new Error(data.detail || 'Request failed');
   return data;
 }
@@ -106,7 +132,7 @@ async function sendOTP(prefix) {
   if (!phone || phone.length !== 10) { setMsg(prefix + '-msg', 'Enter a valid 10-digit phone number.', 'error'); return; }
   try {
     const d = await apiCall('POST', '/api/otp/send', { phone });
-    const hint = d.dev_otp ? ` (Dev OTP: ${d.dev_otp})` : ' Check your phone.';
+    const hint = d.dev_otp ? ` Demo mode, your OTP is ${d.dev_otp}.` : ' Check your phone.';
     setMsg(prefix + '-msg', d.message + hint, 'info');
     showToast('OTP sent to ' + phone);
   } catch (e) { setMsg(prefix + '-msg', e.message, 'error'); }
@@ -123,7 +149,7 @@ async function registerAccount() {
   const age   = +document.getElementById('reg-age').value;
   const email = document.getElementById('reg-email').value.trim();
   const phone = document.getElementById('reg-phone').value.trim();
-  const pin   = +document.getElementById('reg-pin').value;
+  const pin   = document.getElementById('reg-pin').value.trim();
   const otp   = document.getElementById('reg-otp').value.trim();
 
   if (!name || !age || !email || !phone || !pin || !otp) {
@@ -151,12 +177,12 @@ async function registerAccount() {
 async function loginSendOTP() {
   clearMsg('login-msg');
   const acc_no = document.getElementById('login-acc').value.trim().toUpperCase();
-  const pin    = +document.getElementById('login-pin').value;
+  const pin    = document.getElementById('login-pin').value.trim();
   if (!acc_no || !pin) { setMsg('login-msg', 'Enter account number and PIN.', 'error'); return; }
 
   try {
     const d = await apiCall('POST', '/api/login/otp', { acc_no, pin });
-    const hint = d.dev_otp ? ` (Dev OTP: ${d.dev_otp})` : ' Check your registered phone.';
+    const hint = d.dev_otp ? ` Demo mode, your OTP is ${d.dev_otp}.` : '';
     setMsg('login-msg', d.message + hint, 'info');
     document.getElementById('loginOTPArea').style.display = 'block';
     document.getElementById('loginSendOTPBtn').style.display = 'none';
@@ -166,23 +192,18 @@ async function loginSendOTP() {
 async function verifyLoginOTP() {
   clearMsg('login-msg');
   const acc_no = document.getElementById('login-acc').value.trim().toUpperCase();
-  const pin    = +document.getElementById('login-pin').value;
   const otp    = document.getElementById('login-otp').value.trim();
   try {
-    const d = await apiCall('POST', '/api/login/verify', { acc_no, pin, otp });
-    session = { accNo: d.accountNo, name: d.name };
+    const d = await apiCall('POST', '/api/login/verify', { acc_no, otp });
+    session = { accNo: d.account.accountNo, name: d.account.name, token: d.access_token };
+    saveSession();
     updateSession();
-    setMsg('login-msg', `✅ Welcome back, ${d.name}!`, 'success');
-    showToast('Logged in as ' + d.name, 'success');
+    document.getElementById('login-pin').value = '';
+    document.getElementById('login-otp').value = '';
+    setMsg('login-msg', `✅ Welcome back, ${session.name}!`, 'success');
+    showToast('Logged in as ' + session.name, 'success');
     document.getElementById('loginOTPArea').style.display = 'none';
     document.getElementById('loginSendOTPBtn').style.display = 'block';
-    // Pre-fill dashboard
-    document.getElementById('dash-acc').value = d.accountNo;
-    document.getElementById('dep-acc').value  = d.accountNo;
-    document.getElementById('with-acc').value = d.accountNo;
-    document.getElementById('tr-from').value  = d.accountNo;
-    document.getElementById('tx-acc').value   = d.accountNo;
-    document.getElementById('upd-acc').value  = d.accountNo;
     setTimeout(() => goTo('dashboard'), 1200);
   } catch (e) { setMsg('login-msg', e.message, 'error'); }
 }
@@ -201,25 +222,29 @@ function updateSession() {
   }
 }
 
-function logout() {
-  session = { accNo: null, name: null };
+function endSession(message) {
+  session = { ...EMPTY_SESSION };
+  saveSession();
   updateSession();
   goTo('home');
-  showToast('Signed out successfully.');
+  if (message) showToast(message);
 }
+
+function logout() { endSession('Signed out successfully.'); }
 
 /* ── DASHBOARD ───────────────────────────────────────────────────────────── */
 async function loadDashboard() {
   clearMsg('dash-msg');
-  const acc_no = document.getElementById('dash-acc').value.trim().toUpperCase();
-  const pin    = +document.getElementById('dash-pin').value;
-  if (!acc_no || !pin) { setMsg('dash-msg', 'Enter account number and PIN.', 'error'); return; }
+  const signedIn = !!session.token;
+  document.getElementById('dashLoginCard').style.display = signedIn ? 'none' : 'block';
+  document.getElementById('dashContent').style.display   = signedIn ? 'block' : 'none';
+  if (!signedIn) return;
 
   try {
-    const d = await apiCall('POST', '/api/account/details', { acc_no, pin });
-    document.getElementById('dashLoginCard').style.display = 'none';
-    document.getElementById('dashContent').style.display = 'block';
-
+    const [d, tx] = await Promise.all([
+      apiCall('GET', '/api/me'),
+      apiCall('GET', '/api/transactions?limit=5'),
+    ]);
     document.getElementById('dash-balance').textContent = fmt(d.balance);
     document.getElementById('dash-type').textContent    = d.accountType;
     document.getElementById('dash-accno').textContent   = d.accountNo;
@@ -227,30 +252,29 @@ async function loadDashboard() {
     document.getElementById('dash-email').textContent   = d.email;
     document.getElementById('dash-age').textContent     = d.age + ' years';
     document.getElementById('dash-since').textContent   = new Date(d.createdAt).toLocaleDateString('en-IN', { year:'numeric', month:'long', day:'numeric' });
-    document.getElementById('dash-docs').textContent    = d.docsUploaded ? '✅ Verified' : '❌ Pending';
+    document.getElementById('dash-docs').textContent    = KYC_LABELS[d.kycStatus] || d.kycStatus;
 
-    // Recent transactions
-    const recent = (d.transactions || []).slice(0, 5);
     const rc = document.getElementById('dashRecent');
-    if (recent.length) {
-      rc.innerHTML = `<h3>Recent Transactions</h3>` + recent.map(renderTx).join('');
-    } else {
-      rc.innerHTML = `<h3>Recent Transactions</h3><div class="tx-empty">No transactions yet.</div>`;
-    }
+    rc.innerHTML = '<h3>Recent Transactions</h3>' +
+      (tx.transactions.length ? tx.transactions.map(renderTx).join('') : '<div class="tx-empty">No transactions yet.</div>');
   } catch (e) {
     setMsg('dash-msg', e.message, 'error');
   }
 }
 
+const KYC_LABELS = {
+  not_submitted: '❌ Not submitted',
+  pending_review: '⏳ Pending review',
+  verified: '✅ Verified',
+};
+
 /* ── DEPOSIT ─────────────────────────────────────────────────────────────── */
 async function doDeposit() {
   clearMsg('dep-msg');
-  const acc_no = document.getElementById('dep-acc').value.trim().toUpperCase();
-  const pin    = +document.getElementById('dep-pin').value;
-  const amount = +document.getElementById('dep-amt').value;
-  if (!acc_no || !pin || !amount) { setMsg('dep-msg', 'Fill all fields.', 'error'); return; }
+  const amount = document.getElementById('dep-amt').value.trim();
+  if (!amount) { setMsg('dep-msg', 'Enter an amount.', 'error'); return; }
   try {
-    const d = await apiCall('POST', '/api/deposit', { acc_no, pin, amount });
+    const d = await apiCall('POST', '/api/deposit', { amount });
     setMsg('dep-msg', `${d.message} New balance: ${fmt(d.new_balance)}`, 'success');
     showToast(d.message, 'success');
     document.getElementById('dep-amt').value = '';
@@ -260,12 +284,10 @@ async function doDeposit() {
 /* ── WITHDRAW ────────────────────────────────────────────────────────────── */
 async function doWithdraw() {
   clearMsg('with-msg');
-  const acc_no = document.getElementById('with-acc').value.trim().toUpperCase();
-  const pin    = +document.getElementById('with-pin').value;
-  const amount = +document.getElementById('with-amt').value;
-  if (!acc_no || !pin || !amount) { setMsg('with-msg', 'Fill all fields.', 'error'); return; }
+  const amount = document.getElementById('with-amt').value.trim();
+  if (!amount) { setMsg('with-msg', 'Enter an amount.', 'error'); return; }
   try {
-    const d = await apiCall('POST', '/api/withdraw', { acc_no, pin, amount });
+    const d = await apiCall('POST', '/api/withdraw', { amount });
     setMsg('with-msg', `${d.message} New balance: ${fmt(d.new_balance)}`, 'success');
     showToast(d.message, 'success');
     document.getElementById('with-amt').value = '';
@@ -275,13 +297,11 @@ async function doWithdraw() {
 /* ── TRANSFER ────────────────────────────────────────────────────────────── */
 async function doTransfer() {
   clearMsg('tr-msg');
-  const from_acc = document.getElementById('tr-from').value.trim().toUpperCase();
-  const pin      = +document.getElementById('tr-pin').value;
   const to_acc   = document.getElementById('tr-to').value.trim().toUpperCase();
-  const amount   = +document.getElementById('tr-amt').value;
-  if (!from_acc || !pin || !to_acc || !amount) { setMsg('tr-msg', 'Fill all fields.', 'error'); return; }
+  const amount   = document.getElementById('tr-amt').value.trim();
+  if (!to_acc || !amount) { setMsg('tr-msg', 'Enter the recipient and an amount.', 'error'); return; }
   try {
-    const d = await apiCall('POST', '/api/transfer', { from_acc, pin, to_acc, amount });
+    const d = await apiCall('POST', '/api/transfer', { to_acc, amount });
     setMsg('tr-msg', `${d.message} New balance: ${fmt(d.new_balance)}`, 'success');
     showToast(d.message, 'success');
     document.getElementById('tr-amt').value = '';
@@ -291,40 +311,42 @@ async function doTransfer() {
 /* ── TRANSACTIONS ────────────────────────────────────────────────────────── */
 async function loadTransactions() {
   clearMsg('tx-msg');
-  const acc_no = document.getElementById('tx-acc').value.trim().toUpperCase();
-  const pin    = +document.getElementById('tx-pin').value;
-  if (!acc_no || !pin) { setMsg('tx-msg', 'Enter account number and PIN.', 'error'); return; }
+  const signedIn = !!session.token;
+  document.getElementById('txLoginCard').style.display = signedIn ? 'none' : 'block';
+  document.getElementById('txContent').style.display   = signedIn ? 'block' : 'none';
+  if (!signedIn) return;
   try {
-    const d = await apiCall('GET', `/api/transactions/${acc_no}?pin=${pin}`);
-    document.getElementById('txLoginCard').style.display = 'none';
-    document.getElementById('txContent').style.display   = 'block';
-    document.getElementById('tx-balance').textContent    = fmt(d.balance);
-
+    const d = await apiCall('GET', '/api/transactions?limit=100');
+    document.getElementById('tx-balance').textContent = fmt(d.balance);
     const txl = document.getElementById('txList');
-    if (!d.transactions || d.transactions.length === 0) {
-      txl.innerHTML = '<div class="tx-empty">No transactions found.</div>';
-    } else {
-      txl.innerHTML = d.transactions.map(renderTx).join('');
-    }
+    txl.innerHTML = d.transactions.length
+      ? d.transactions.map(renderTx).join('')
+      : '<div class="tx-empty">No transactions found.</div>';
   } catch (e) { setMsg('tx-msg', e.message, 'error'); }
+}
+
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 
 function renderTx(tx) {
   const type = tx.type || '';
   let cls = 'debit', icon = '↑', amtCls = 'debit';
-  if (type === 'Credit' || type === 'Deposit' || type === 'Transfer In') {
+  if (type === 'Credit' || type === 'Transfer In') {
     cls = 'credit'; icon = '↓'; amtCls = type === 'Transfer In' ? 'transfer-in' : 'credit';
   } else if (type === 'Transfer Out') {
     cls = 'transfer'; icon = '⇄'; amtCls = 'transfer-out';
   }
   const sign = (amtCls === 'credit' || amtCls === 'transfer-in') ? '+' : '-';
+  const when = tx.date ? new Date(tx.date).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+  const party = tx.counterparty ? ` · ${type === 'Transfer In' ? 'from' : 'to'} ${tx.counterparty}` : '';
   return `
     <div class="tx-item">
       <div class="tx-left">
         <div class="tx-dot ${cls}">${icon}</div>
         <div>
-          <div class="tx-type">${type}</div>
-          <div class="tx-date">${tx.date || ''}</div>
+          <div class="tx-type">${escapeHTML(type + party)}</div>
+          <div class="tx-date">${escapeHTML(when)} · Bal ${fmt(tx.balance)}</div>
         </div>
       </div>
       <div class="tx-amount ${amtCls}">${sign}${fmt(tx.amount)}</div>
@@ -334,20 +356,16 @@ function renderTx(tx) {
 /* ── UPLOAD ──────────────────────────────────────────────────────────────── */
 async function uploadDocs() {
   clearMsg('up-msg');
-  const acc_no = document.getElementById('up-acc').value.trim().toUpperCase();
-  const pin    = document.getElementById('up-pin').value;
   const aadhaar = document.getElementById('up-aadhaar').files[0];
   const pan     = document.getElementById('up-pan').files[0];
   const address = document.getElementById('up-address').files[0];
   const guardian= document.getElementById('up-guardian').files[0];
 
-  if (!acc_no || !pin || !aadhaar || !pan || !address) {
-    setMsg('up-msg', 'Account number, PIN, and all 3 documents are required.', 'error'); return;
+  if (!aadhaar || !pan || !address) {
+    setMsg('up-msg', 'All 3 documents are required.', 'error'); return;
   }
 
   const fd = new FormData();
-  fd.append('acc_no', acc_no);
-  fd.append('pin', pin);
   fd.append('aadhaar', aadhaar);
   fd.append('pan', pan);
   fd.append('address_proof', address);
@@ -356,23 +374,24 @@ async function uploadDocs() {
   try {
     const d = await apiCall('POST', '/api/docs/upload', fd, true);
     setMsg('up-msg', d.message, 'success');
-    showToast('Documents uploaded!', 'success');
+    showToast('Documents submitted for review.', 'success');
   } catch (e) { setMsg('up-msg', e.message, 'error'); }
 }
 
 /* ── UPDATE ──────────────────────────────────────────────────────────────── */
 async function updateAccount() {
   clearMsg('upd-msg');
-  const acc_no    = document.getElementById('upd-acc').value.trim().toUpperCase();
-  const pin       = +document.getElementById('upd-pin').value;
-  const new_name  = document.getElementById('upd-name').value.trim() || null;
-  const new_email = document.getElementById('upd-email').value.trim() || null;
-  const np        = document.getElementById('upd-newpin').value;
-  const new_pin   = np ? +np : null;
-  if (!acc_no || !pin) { setMsg('upd-msg', 'Account number and current PIN are required.', 'error'); return; }
+  const current_pin = document.getElementById('upd-pin').value.trim();
+  const new_name    = document.getElementById('upd-name').value.trim() || null;
+  const new_email   = document.getElementById('upd-email').value.trim() || null;
+  const new_pin     = document.getElementById('upd-newpin').value.trim() || null;
+  if (!current_pin) { setMsg('upd-msg', 'Enter your current PIN to confirm changes.', 'error'); return; }
   if (!new_name && !new_email && !new_pin) { setMsg('upd-msg', 'Enter at least one field to update.', 'error'); return; }
   try {
-    const d = await apiCall('PUT', '/api/account/update', { acc_no, pin, new_name, new_email, new_pin });
+    const d = await apiCall('PUT', '/api/account/update', { current_pin, new_name, new_email, new_pin });
+    ['upd-pin', 'upd-newpin'].forEach(id => document.getElementById(id).value = '');
+    if (d.reauth) { endSession(d.message); return; }
+    if (new_name) { session.name = new_name; saveSession(); updateSession(); }
     setMsg('upd-msg', d.message, 'success');
     showToast('Profile updated!', 'success');
   } catch (e) { setMsg('upd-msg', e.message, 'error'); }
@@ -381,16 +400,13 @@ async function updateAccount() {
 /* ── CLOSE ───────────────────────────────────────────────────────────────── */
 async function closeAccount() {
   clearMsg('cls-msg');
-  const acc_no  = document.getElementById('cls-acc').value.trim().toUpperCase();
-  const pin     = +document.getElementById('cls-pin').value;
+  const pin     = document.getElementById('cls-pin').value.trim();
   const confirm = document.getElementById('cls-confirm').value.trim();
   if (confirm !== 'DELETE') { setMsg('cls-msg', 'Type DELETE exactly to confirm.', 'error'); return; }
-  if (!acc_no || !pin) { setMsg('cls-msg', 'Enter account number and PIN.', 'error'); return; }
+  if (!pin) { setMsg('cls-msg', 'Enter your PIN to confirm.', 'error'); return; }
   try {
-    const d = await apiCall('DELETE', '/api/account/close', { acc_no, pin });
-    setMsg('cls-msg', d.message, 'success');
-    showToast('Account closed.', 'info');
-    if (session.accNo === acc_no) logout();
+    const d = await apiCall('DELETE', '/api/account/close', { pin, confirm });
+    endSession(d.message);
     loadStats();
   } catch (e) { setMsg('cls-msg', e.message, 'error'); }
 }
@@ -416,4 +432,5 @@ async function loadStats() {
 }
 
 /* ── Init ────────────────────────────────────────────────────────────────── */
+updateSession();
 loadStats();
